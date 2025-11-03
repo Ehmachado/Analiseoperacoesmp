@@ -532,14 +532,16 @@ Exemplos de formatos aceitos:
             <div class="filter-section">
                 <div class="filter-group">
                     <label>Filtrar por Agência (Pref):</label>
-                    <!-- <<< ALTERADO: aqui estava sem parênteses -->
-                    <select id="filterAgencia" onchange="applyFilters()">
+                    <!-- sem onchange, só seleciona -->
+                    <select id="filterAgencia">
                         <option value="">Todas</option>
                     </select>
                     <label>Situação:</label>
-                    <select id="filterSituacao" onchange="applyFilters()">
+                    <select id="filterSituacao">
                         <option value="">Todas</option>
                     </select>
+                    <!-- botão novo pra aplicar -->
+                    <button onclick="applyFilters()">Aplicar filtros</button>
                     <button onclick="clearFilters()">Limpar Filtros</button>
                     <button class="export-btn" onclick="exportCurrentView()">📥 Exportar CSV</button>
                 </div>
@@ -1414,11 +1416,16 @@ Exemplos de formatos aceitos:
             }
         }
 
+        // filtro de situação agora continua valendo pra aba de agências
         function updateAgenciasAnalysis() {
             const agenciasStats = {};
             const paradasData = getParadasData();
 
             Object.entries(statusHistory).forEach(([propNum, prop]) => {
+                if (currentFilter.situacao && prop.current !== currentFilter.situacao) {
+                    return;
+                }
+
                 const pref = prop.pref || 'Sem Prefixo';
                 
                 if (!agenciasStats[pref]) {
@@ -1794,15 +1801,20 @@ Exemplos de formatos aceitos:
             const agenciaSelect = document.getElementById('filterAgencia');
             const situacaoSelect = document.getElementById('filterSituacao');
 
+            const selectedAg = currentFilter.agencia;
+            const selectedSit = currentFilter.situacao;
+
             agenciaSelect.innerHTML = '<option value="">Todas</option>';
             Array.from(agencias).sort().forEach(ag => {
                 agenciaSelect.innerHTML += `<option value="${ag}">${ag}</option>`;
             });
+            agenciaSelect.value = selectedAg || '';
 
             situacaoSelect.innerHTML = '<option value="">Todas</option>';
             Array.from(situacoes).sort().forEach(sit => {
                 situacaoSelect.innerHTML += `<option value="${sit}">${sit}</option>`;
             });
+            situacaoSelect.value = selectedSit || '';
         }
 
         function matchesFilter(pref, situacao) {
