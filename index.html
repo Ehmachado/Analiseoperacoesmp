@@ -671,7 +671,7 @@ Exemplos de formatos aceitos:
         let statusHistory = {};
         let currentFilter = { agencia: '', situacao: '' };
         let agenciaMap = {};
-        let latestFileDate = null; // <<< ALTERADO: data do arquivo mais recente
+        let latestFileDate = null; // <<< ALTERADO: manter data do arquivo mais recente
 
         function processAgenciaMapping() {
             const textarea = document.getElementById('agenciaMapping');
@@ -754,7 +754,7 @@ Exemplos de formatos aceitos:
             filesData = [];
             statusHistory = {};
             currentFilter = { agencia: '', situacao: '' };
-            latestFileDate = null; // <<< manter coerente ao limpar
+            latestFileDate = null;
 
             document.getElementById('fileInput').value = '';
 
@@ -1170,7 +1170,7 @@ Exemplos de formatos aceitos:
             console.log(`Propostas únicas encontradas: ${Object.keys(propByFile).length}`);
 
             const latestFile = filesData[filesData.length - 1];
-            latestFileDate = latestFile.date; // <<< ALTERADO: guardar a data mais recente
+            latestFileDate = latestFile.date; // guarda a data mais recente
             console.log(`Arquivo mais recente: ${latestFile.name}`);
             
             const latestFilePropostas = new Set();
@@ -1340,18 +1340,34 @@ Exemplos de formatos aceitos:
 
         function getParadasData() {
             const paradas = [];
-            const referenceDate = latestFileDate ? new Date(latestFileDate) : new Date(); // <<< ALTERADO: usar data da última planilha
+            const referenceDate = latestFileDate ? new Date(latestFileDate) : new Date();
 
             Object.entries(statusHistory).forEach(([propNum, prop]) => {
-                const lastChangeDate = prop.changes[prop.changes.length - 1].date;
-                const lastSeenDate = prop.lastSeen;
-                
-                let daysSinceChange = Math.floor((referenceDate - lastChangeDate) / (1000 * 60 * 60 * 24));
-                if (daysSinceChange < 0) {
-                    daysSinceChange = 0;
+                const lastChangeDateRaw = prop.changes[prop.changes.length - 1].date;
+                let lastChangeDate = lastChangeDateRaw instanceof Date ? new Date(lastChangeDateRaw) : new Date(lastChangeDateRaw);
+
+                // <<< ALTERADO: considerar Dt Prop como início se for mais antiga
+                let startDate = new Date(lastChangeDate);
+                let creationDate = null;
+                if (prop.dtProp) {
+                    creationDate = parseToDateFlexible(prop.dtProp);
+                    if (creationDate && creationDate < startDate) {
+                        startDate = creationDate;
+                    }
                 }
-                
-                if (daysSinceChange > 3) {
+
+                // <<< ALTERADO: caso típico - está em ACOLHIMENTO desde a criação e nunca mudou
+                if ((!prop.changes || prop.changes.length === 1) && prop.dtProp) {
+                    const dt = parseToDateFlexible(prop.dtProp);
+                    if (dt) {
+                        startDate = dt;
+                    }
+                }
+
+                let daysSince = Math.floor((referenceDate - startDate) / (1000 * 60 * 60 * 24));
+                if (daysSince < 0) daysSince = 0;
+
+                if (daysSince > 3) {
                     const timesSeenWithoutChange = prop.allOccurrences.filter(occ => 
                         occ.fileDate > lastChangeDate
                     ).length;
@@ -1360,8 +1376,8 @@ Exemplos de formatos aceitos:
                         propNum,
                         ...prop,
                         lastChangeDate: lastChangeDate,
-                        lastSeenDate: lastSeenDate,
-                        daysStopped: daysSinceChange,
+                        lastSeenDate: prop.lastSeen,
+                        daysStopped: daysSince,
                         filesWithoutChange: timesSeenWithoutChange,
                         numChanges: prop.changes.length
                     });
@@ -1393,7 +1409,7 @@ Exemplos de formatos aceitos:
                         <td>${p.pref || '-'}</td>
                         <td>${p.mci || '-'}</td>
                         <td><span class="badge badge-info">${p.current}</span></td>
-                        <td>${formatDate(p.lastChangeDate)}<br><small style="color: #999;">${changeInfo}</small></td>
+                        <td>${p.dtProp || formatDate(p.lastChangeDate)}<br><small style="color: #999;">${changeInfo}</small></td>
                         <td><span class="badge ${badgeClass}">${p.daysStopped} dias</span><br><small style="color: #999;">Vista ${p.filesWithoutChange}x sem mudar</small></td>
                         <td>${formatCurrency(p.valor)}</td>
                     `;
@@ -1447,17 +1463,17 @@ Exemplos de formatos aceitos:
                 const status = prop.current || 'Sem Status';
                 agenciasStats[pref].statusCount[status] = (agenciasStats[pref].statusCount[status] || 0) + 1;
 
-                if (status.includes('ACOLHIMENTO')) {
+                if (status && status.toUpperCase().includes('ACOLHIMENTO')) {
                     agenciasStats[pref].acolhimento++;
-                } else if (status.includes('ACOLHIDA')) {
+                } else if (status && status.toUpperCase().includes('ACOLHIDA')) {
                     agenciasStats[pref].acolhida++;
-                } else if (status.includes('ANALISADA')) {
+                } else if (status && status.toUpperCase().includes('ANALISADA')) {
                     agenciasStats[pref].analisada++;
-                } else if (status.includes('DESPACHADA')) {
+                } else if (status && status.toUpperCase().includes('DESPACHADA')) {
                     agenciasStats[pref].despachada++;
-                } else if (status.includes('DESPACHO')) {
+                } else if (status && status.toUpperCase().includes('DESPACHO')) {
                     agenciasStats[pref].despacho++;
-                } else if (status.includes('FORMALIZADA') || status.includes('LIBERADA')) {
+                } else if (status && (status.toUpperCase().includes('FORMALIZADA') || status.toUpperCase().includes('LIBERADA'))) {
                     agenciasStats[pref].formalizada++;
                 }
 
@@ -1861,6 +1877,7 @@ Exemplos de formatos aceitos:
         }
 
         function formatDate(date) {
+            if (!date) return '-';
             if (typeof date === 'string') return date;
             return date.toLocaleDateString('pt-BR');
         }
@@ -1889,6 +1906,52 @@ Exemplos de formatos aceitos:
             }
             
             return 'R$ 0,00';
+        }
+
+        // <<< ALTERADO: função auxiliar para interpretar datas vindas da planilha
+        function parseToDateFlexible(value) {
+            if (!value) return null;
+
+            if (value instanceof Date) {
+                return new Date(value);
+            }
+
+            if (typeof value === 'number') {
+                // Pode ser timestamp ou serial do Excel; tentamos direto
+                const d = new Date(value);
+                if (!isNaN(d.getTime())) return d;
+            }
+
+            if (typeof value === 'string') {
+                const v = value.trim();
+
+                // ISO ou YYYY-MM-DD
+                if (/^\d{4}-\d{2}-\d{2}/.test(v)) {
+                    const d = new Date(v);
+                    if (!isNaN(d.getTime())) return d;
+                }
+
+                // DD/MM/YYYY
+                if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(v)) {
+                    const [dd, mm, yyyy] = v.split('/');
+                    const d = new Date(parseInt(yyyy, 10), parseInt(mm, 10) - 1, parseInt(dd, 10));
+                    if (!isNaN(d.getTime())) return d;
+                }
+
+                // DD/MM (sem ano) -> usa ano da última planilha ou ano atual
+                if (/^\d{1,2}\/\d{1,2}$/.test(v)) {
+                    const [dd, mm] = v.split('/');
+                    const baseYear = latestFileDate ? new Date(latestFileDate).getFullYear() : new Date().getFullYear();
+                    const d = new Date(baseYear, parseInt(mm, 10) - 1, parseInt(dd, 10));
+                    if (!isNaN(d.getTime())) return d;
+                }
+
+                // fallback
+                const d = new Date(v);
+                if (!isNaN(d.getTime())) return d;
+            }
+
+            return null;
         }
     </script>
 </body>
