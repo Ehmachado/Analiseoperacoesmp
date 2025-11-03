@@ -523,10 +523,10 @@ Exemplos de formatos aceitos:
 
         <div id="mainContent" style="display: none;">
             <div class="tabs">
-                <button class="tab active" onclick="switchTab('mudancas')">🔄 Mudanças de Status</button>
-                <button class="tab" onclick="switchTab('paradas')">⏱️ Propostas Paradas</button>
-                <button class="tab" onclick="switchTab('agencias')">🏢 Análise por Agência</button>
-                <button class="tab" onclick="switchTab('historico')">📋 Histórico Completo</button>
+                <button class="tab active" onclick="switchTab('mudancas', this)">🔄 Mudanças de Status</button>
+                <button class="tab" onclick="switchTab('paradas', this)">⏱️ Propostas Paradas</button>
+                <button class="tab" onclick="switchTab('agencias', this)">🏢 Análise por Agência</button>
+                <button class="tab" onclick="switchTab('historico', this)">📋 Histórico Completo</button>
             </div>
 
             <div class="filter-section">
@@ -668,10 +668,15 @@ Exemplos de formatos aceitos:
     <script>
         let allData = [];
         let filesData = [];
-        let statusHistory = {};
+        let statusHistory = [];
         let currentFilter = { agencia: '', situacao: '' };
         let agenciaMap = {};
-        let latestFileDate = null; // <<< ALTERADO: manter data do arquivo mais recente
+        let latestFileDate = null;
+
+        // <<< ALTERADO: vamos usar sempre HOJE como referência de atraso
+        function getReferenceDate() {
+            return new Date();
+        }
 
         function processAgenciaMapping() {
             const textarea = document.getElementById('agenciaMapping');
@@ -691,7 +696,6 @@ Exemplos de formatos aceitos:
                 line = line.trim();
                 if (!line) return;
 
-                // Aceitar separadores: vírgula, ponto-e-vírgula ou tab
                 let parts;
                 if (line.includes('\t')) {
                     parts = line.split('\t');
@@ -706,7 +710,7 @@ Exemplos de formatos aceitos:
 
                 if (parts.length >= 2) {
                     const prefixo = parts[0].trim();
-                    const agenciaNome = parts.slice(1).join(',').trim(); // Pega tudo depois do primeiro separador
+                    const agenciaNome = parts.slice(1).join(',').trim();
                     
                     if (prefixo && agenciaNome) {
                         agenciaMap[prefixo] = agenciaNome;
@@ -918,7 +922,7 @@ Exemplos de formatos aceitos:
             const errorCount = results.filter(r => !r.success).length;
 
             if (filesData.length === 0) {
-                showAlert(`❌ Nenhum arquivo foi processado com sucesso. ${errorCount} arquivo(s) com erro. Verifique se os arquivos estão no formato correto e contêm a coluna "Nº Prop".`, 'warning');
+                showAlert(`❌ Nenhum arquivo foi processado com sucesso. ${errorCount} arquivo(s) com erro.`, 'warning');
                 document.getElementById('processBtn').disabled = false;
                 return;
             }
@@ -948,7 +952,7 @@ Exemplos de formatos aceitos:
                 }
             } catch (error) {
                 console.error('Erro ao analisar dados:', error);
-                showAlert(`❌ Erro ao analisar os dados: ${error.message}. Por favor, verifique se os arquivos estão no formato correto.`, 'warning');
+                showAlert(`❌ Erro ao analisar os dados: ${error.message}.`, 'warning');
             }
             
             document.getElementById('processBtn').disabled = false;
@@ -966,7 +970,7 @@ Exemplos de formatos aceitos:
                         complete: function(results) {
                             try {
                                 if (!results.data || results.data.length === 0) {
-                                    showAlert(`❌ Erro: Arquivo ${file.name} está vazio ou não pôde ser lido`, 'warning');
+                                    showAlert(`❌ Erro: Arquivo ${file.name} está vazio`, 'warning');
                                     resolve({ success: false, fileName: file.name });
                                     return;
                                 }
@@ -974,7 +978,7 @@ Exemplos de formatos aceitos:
                                 const data = results.data.filter(row => row['Nº Prop'] && row['Nº Prop'] !== 'Nº Prop');
                                 
                                 if (data.length === 0) {
-                                    showAlert(`❌ Erro: Arquivo ${file.name} não contém coluna "Nº Prop" ou não tem dados válidos`, 'warning');
+                                    showAlert(`❌ Erro: Arquivo ${file.name} não contém coluna "Nº Prop"`, 'warning');
                                     resolve({ success: false, fileName: file.name });
                                     return;
                                 }
@@ -992,7 +996,7 @@ Exemplos de formatos aceitos:
 
                                 resolve({ success: true, fileName: file.name, count: data.length });
                             } catch (error) {
-                                console.error('Erro ao processar arquivo CSV:', error);
+                                console.error('Erro ao processar CSV:', error);
                                 showAlert(`❌ Erro ao processar ${file.name}: ${error.message}`, 'warning');
                                 resolve({ success: false, fileName: file.name, error: error.message });
                             }
@@ -1008,11 +1012,8 @@ Exemplos de formatos aceitos:
                     
                     reader.onload = function(e) {
                         try {
-                            console.log(`Processando XLSX: ${file.name}`);
                             const data = new Uint8Array(e.target.result);
                             const workbook = XLSX.read(data, { type: 'array' });
-                            
-                            console.log(`Planilhas encontradas: ${workbook.SheetNames.join(', ')}`);
                             
                             if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
                                 showAlert(`❌ Erro: Arquivo ${file.name} não contém planilhas`, 'warning');
@@ -1023,11 +1024,7 @@ Exemplos de formatos aceitos:
                             const firstSheetName = workbook.SheetNames[0];
                             const worksheet = workbook.Sheets[firstSheetName];
                             
-                            console.log(`Lendo planilha: ${firstSheetName}`);
-                            
                             const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
-                            
-                            console.log(`Total de linhas lidas: ${jsonData.length}`);
                             
                             if (!jsonData || jsonData.length === 0) {
                                 showAlert(`❌ Erro: Arquivo ${file.name} - planilha vazia`, 'warning');
@@ -1043,15 +1040,12 @@ Exemplos de formatos aceitos:
                                 if (Array.isArray(row) && row.some(cell => cell && cell.toString().includes('Nº Prop'))) {
                                     headerRowIndex = i;
                                     headers = row;
-                                    console.log(`Cabeçalho encontrado na linha ${i}`);
-                                    console.log(`Colunas: ${headers.join(', ')}`);
                                     break;
                                 }
                             }
                             
                             if (headerRowIndex === -1) {
-                                console.error('Cabeçalho "Nº Prop" não encontrado');
-                                showAlert(`❌ Erro: Arquivo ${file.name} não contém coluna "Nº Prop". Verifique se é a planilha correta.`, 'warning');
+                                showAlert(`❌ Erro: Arquivo ${file.name} não contém coluna "Nº Prop".`, 'warning');
                                 resolve({ success: false, fileName: file.name });
                                 return;
                             }
@@ -1070,19 +1064,18 @@ Exemplos de formatos aceitos:
                                             cellValue = '';
                                         }
                                         
-                                        if (typeof cellValue === 'number' && (header.includes('Dt') || header.includes('Data'))) {
+                                        if (typeof cellValue === 'number' && (header.toString().toLowerCase().includes('dt') || header.toString().toLowerCase().includes('data'))) {
                                             try {
                                                 const date = XLSX.SSF.parse_date_code(cellValue);
                                                 cellValue = `${date.y}-${String(date.m).padStart(2, '0')}-${String(date.d).padStart(2, '0')}`;
-                                            } catch (e) {
-                                            }
+                                            } catch (e) {}
                                         }
                                         
                                         rowObj[header] = cellValue;
                                     }
                                 });
                                 
-                                if (rowObj['Nº Prop'] && rowObj['Nº Prop'] !== 'Nº Prop' && rowObj['Nº Prop'] !== '') {
+                                if (rowObj['Nº Prop'] && rowObj['Nº Prop'] !== '') {
                                     rowObj._fileDate = fileDate;
                                     rowObj._fileName = file.name;
                                     processedData.push(rowObj);
@@ -1090,8 +1083,6 @@ Exemplos de formatos aceitos:
                             }
                             
                             if (processedData.length > 0) {
-                                console.log(`${processedData.length} linhas válidas processadas`);
-                                console.log('Exemplo de primeira linha:', processedData[0]);
                                 filesData.push({
                                     name: file.name,
                                     date: fileDate,
@@ -1099,12 +1090,11 @@ Exemplos de formatos aceitos:
                                 });
                                 resolve({ success: true, fileName: file.name, count: processedData.length });
                             } else {
-                                console.error('Nenhum dado válido após processar');
                                 showAlert(`❌ Erro: Arquivo ${file.name} não possui dados válidos após o cabeçalho`, 'warning');
                                 resolve({ success: false, fileName: file.name });
                             }
                         } catch (error) {
-                            console.error('Erro ao processar arquivo Excel:', error);
+                            console.error('Erro ao processar XLSX:', error);
                             showAlert(`❌ Erro ao processar ${file.name}: ${error.message}`, 'warning');
                             resolve({ success: false, fileName: file.name, error: error.message });
                         }
@@ -1112,13 +1102,13 @@ Exemplos de formatos aceitos:
                     
                     reader.onerror = function(error) {
                         console.error('Erro ao ler arquivo:', error);
-                        showAlert(`❌ Erro ao ler arquivo ${file.name}. O arquivo pode estar corrompido ou em uso.`, 'warning');
+                        showAlert(`❌ Erro ao ler arquivo ${file.name}.`, 'warning');
                         resolve({ success: false, fileName: file.name, error: 'Erro ao ler arquivo' });
                     };
                     
                     reader.readAsArrayBuffer(file);
                 } else {
-                    showAlert(`❌ Formato não suportado: ${file.name}. Use apenas arquivos .csv, .xlsx ou .xls`, 'warning');
+                    showAlert(`❌ Formato não suportado: ${file.name}.`, 'warning');
                     resolve({ success: false, fileName: file.name, error: 'Formato não suportado' });
                 }
             });
@@ -1127,16 +1117,10 @@ Exemplos de formatos aceitos:
         function analyzeData() {
             filesData.sort((a, b) => a.date - b.date);
 
-            console.log('=== INICIANDO ANÁLISE ===');
-            console.log(`Total de arquivos: ${filesData.length}`);
-
             allData = [];
             filesData.forEach(file => {
-                console.log(`Arquivo: ${file.name}, Data: ${file.date}, Registros: ${file.data.length}`);
                 allData = allData.concat(file.data);
             });
-
-            console.log(`Total de registros combinados: ${allData.length}`);
 
             statusHistory = {};
             
@@ -1160,18 +1144,14 @@ Exemplos de formatos aceitos:
                         pref: row['Pref'],
                         mci: row['MCI'],
                         valor: row['Valor'],
-                        dtProp: row['Dt Prop'],
-                        matriz: row['Matriz (atual)'],
-                        cart: row['Cart']
+                        // guardamos todas as colunas pra tentar achar a data de criação
+                        rawRow: row
                     });
                 });
             });
 
-            console.log(`Propostas únicas encontradas: ${Object.keys(propByFile).length}`);
-
             const latestFile = filesData[filesData.length - 1];
-            latestFileDate = latestFile.date; // guarda a data mais recente
-            console.log(`Arquivo mais recente: ${latestFile.name}`);
+            latestFileDate = latestFile.date;
             
             const latestFilePropostas = new Set();
             latestFile.data.forEach(row => {
@@ -1181,22 +1161,12 @@ Exemplos de formatos aceitos:
                 }
             });
 
-            console.log(`Propostas no arquivo mais recente: ${latestFilePropostas.size}`);
-            console.log('Primeiras 10 propostas do arquivo mais recente:', Array.from(latestFilePropostas).slice(0, 10));
-
-            let removidas = 0;
-            let mantidas = 0;
-
             Object.entries(propByFile).forEach(([propNum, occurrences]) => {
                 const propNumNormalized = String(propNum).trim();
                 
                 if (!latestFilePropostas.has(propNumNormalized)) {
-                    console.log(`Proposta ${propNum} removida - não existe na planilha mais recente`);
-                    removidas++;
                     return;
                 }
-
-                mantidas++;
 
                 occurrences.sort((a, b) => a.fileDate - b.fileDate);
                 
@@ -1218,34 +1188,66 @@ Exemplos de formatos aceitos:
                 
                 const latest = occurrences[occurrences.length - 1];
                 
+                // <<< ALTERADO: agora já guardamos aqui a data de criação estimada
+                const creationDate = extractCreationDateFromOccurrences(occurrences) || occurrences[0].fileDate;
+
                 statusHistory[propNum] = {
                     changes: changes,
                     current: latest.status,
                     pref: latest.pref,
                     mci: latest.mci,
                     valor: latest.valor,
-                    dtProp: latest.dtProp,
-                    matriz: latest.matriz,
-                    cart: latest.cart,
+                    dtProp: creationDate, // vamos usar direto
                     firstSeen: occurrences[0].fileDate,
                     lastSeen: latest.fileDate,
                     allOccurrences: occurrences
                 };
             });
 
-            console.log(`=== RESULTADO DA ANÁLISE ===`);
-            console.log(`Propostas mantidas: ${mantidas}`);
-            console.log(`Propostas removidas: ${removidas}`);
-            console.log(`Total de propostas no histórico: ${Object.keys(statusHistory).length}`);
-            console.log(`Propostas na planilha mais recente: ${latestFilePropostas.size}`);
-
-            if (Object.keys(statusHistory).length === 0) {
-                console.error('❌ ERRO: Nenhuma proposta no histórico! Verificar comparação de IDs.');
-                console.log('Exemplo de proposta do arquivo:', Object.keys(propByFile)[0]);
-                console.log('Exemplo de proposta do Set:', Array.from(latestFilePropostas)[0]);
-            }
-
             updateFilesList();
+        }
+
+        // <<< NOVO: tenta achar a data de criação percorrendo várias colunas comuns
+        function extractCreationDateFromOccurrences(occurrences) {
+            const possibleDateKeys = [
+                'Dt Prop',
+                'Dt Proposta',
+                'Data Proposta',
+                'Data da Proposta',
+                'Dt Inclusão',
+                'Data Inclusão',
+                'Dt Acolhimento',
+                'Data Acolhimento',
+                'Dt Solicitação',
+                'Data Solicitação'
+            ];
+
+            let bestDate = null;
+
+            occurrences.forEach(occ => {
+                const row = occ.rawRow || {};
+                // 1) tenta pelas chaves conhecidas
+                for (const key of possibleDateKeys) {
+                    if (row[key]) {
+                        const d = parseToDateFlexible(row[key]);
+                        if (d && (!bestDate || d < bestDate)) {
+                            bestDate = d;
+                        }
+                    }
+                }
+                // 2) fallback: se vier alguma coluna com "prop" e "data" no nome
+                Object.keys(row).forEach(k => {
+                    const low = k.toLowerCase();
+                    if ((low.includes('prop') || low.includes('proposta')) && (low.includes('dt') || low.includes('data'))) {
+                        const d = parseToDateFlexible(row[k]);
+                        if (d && (!bestDate || d < bestDate)) {
+                            bestDate = d;
+                        }
+                    }
+                });
+            });
+
+            return bestDate;
         }
 
         function updateFilesList() {
@@ -1317,7 +1319,7 @@ Exemplos de formatos aceitos:
 
             if (mudancas.length === 0) {
                 const row = tbody.insertRow();
-                row.innerHTML = '<td colspan="8" style="text-align: center; padding: 30px; color: #666;">📊 Nenhuma mudança de status detectada. Faça upload de múltiplos arquivos de datas diferentes para comparar.</td>';
+                row.innerHTML = '<td colspan="8" style="text-align: center; padding: 30px; color: #666;">📊 Nenhuma mudança de status detectada.</td>';
                 return;
             }
 
@@ -1338,45 +1340,46 @@ Exemplos de formatos aceitos:
             });
         }
 
+        // <<< ALTERADO: lógica de paradas refeita
         function getParadasData() {
             const paradas = [];
-            const referenceDate = latestFileDate ? new Date(latestFileDate) : new Date();
+            const referenceDate = getReferenceDate(); // hoje
 
             Object.entries(statusHistory).forEach(([propNum, prop]) => {
-                const lastChangeDateRaw = prop.changes[prop.changes.length - 1].date;
-                let lastChangeDate = lastChangeDateRaw instanceof Date ? new Date(lastChangeDateRaw) : new Date(lastChangeDateRaw);
+                // última mudança conhecida
+                const lastChange = prop.changes[prop.changes.length - 1];
+                let lastChangeDate = lastChange ? lastChange.date : prop.lastSeen;
 
-                // <<< ALTERADO: considerar Dt Prop como início se for mais antiga
-                let startDate = new Date(lastChangeDate);
-                let creationDate = null;
-                if (prop.dtProp) {
-                    creationDate = parseToDateFlexible(prop.dtProp);
-                    if (creationDate && creationDate < startDate) {
-                        startDate = creationDate;
-                    }
+                // data de criação que detectamos
+                let creationDate = prop.dtProp ? (prop.dtProp instanceof Date ? prop.dtProp : parseToDateFlexible(prop.dtProp)) : null;
+                if (!creationDate) {
+                    creationDate = prop.firstSeen ? new Date(prop.firstSeen) : null;
                 }
 
-                // <<< ALTERADO: caso típico - está em ACOLHIMENTO desde a criação e nunca mudou
-                if ((!prop.changes || prop.changes.length === 1) && prop.dtProp) {
-                    const dt = parseToDateFlexible(prop.dtProp);
-                    if (dt) {
-                        startDate = dt;
-                    }
+                // se nunca mudou, começa a contar da criação
+                let startDate = null;
+                if (prop.changes.length <= 1) {
+                    startDate = creationDate || new Date(prop.firstSeen);
+                } else {
+                    // mudou pelo menos uma vez: conta da última mudança
+                    startDate = lastChangeDate ? new Date(lastChangeDate) : (creationDate || new Date(prop.firstSeen));
                 }
+
+                // se ainda assim não temos data, pula
+                if (!startDate) return;
 
                 let daysSince = Math.floor((referenceDate - startDate) / (1000 * 60 * 60 * 24));
                 if (daysSince < 0) daysSince = 0;
 
                 if (daysSince > 3) {
-                    const timesSeenWithoutChange = prop.allOccurrences.filter(occ => 
-                        occ.fileDate > lastChangeDate
-                    ).length;
+                    const timesSeenWithoutChange = prop.allOccurrences
+                        ? prop.allOccurrences.filter(occ => occ.fileDate > lastChangeDate).length
+                        : 0;
                     
                     paradas.push({
                         propNum,
                         ...prop,
                         lastChangeDate: lastChangeDate,
-                        lastSeenDate: prop.lastSeen,
                         daysStopped: daysSince,
                         filesWithoutChange: timesSeenWithoutChange,
                         numChanges: prop.changes.length
@@ -1408,9 +1411,9 @@ Exemplos de formatos aceitos:
                         <td><strong>${getAgenciaNome(p.pref)}</strong></td>
                         <td>${p.pref || '-'}</td>
                         <td>${p.mci || '-'}</td>
-                        <td><span class="badge badge-info">${p.current}</span></td>
-                        <td>${p.dtProp || formatDate(p.lastChangeDate)}<br><small style="color: #999;">${changeInfo}</small></td>
-                        <td><span class="badge ${badgeClass}">${p.daysStopped} dias</span><br><small style="color: #999;">Vista ${p.filesWithoutChange}x sem mudar</small></td>
+                        <td><span class="badge badge-info">${p.current || '-'}</span></td>
+                        <td>${p.dtProp ? formatDate(p.dtProp) : (p.lastChangeDate ? formatDate(p.lastChangeDate) : '-')}<br><small style="color: #999;">${changeInfo}</small></td>
+                        <td><span class="badge ${badgeClass}">${p.daysStopped} dias</span><br><small style="color: #999;">Vista ${p.filesWithoutChange || 0}x sem mudar</small></td>
                         <td>${formatCurrency(p.valor)}</td>
                     `;
                 }
@@ -1602,7 +1605,6 @@ Exemplos de formatos aceitos:
             const ctx = document.getElementById('statusPorAgenciaChart');
             
             if (!ctx) {
-                console.error('Canvas statusPorAgenciaChart não encontrado');
                 return;
             }
 
@@ -1619,7 +1621,6 @@ Exemplos de formatos aceitos:
                 .slice(0, 10);
 
             if (topAgencias.length === 0) {
-                console.log('Nenhuma agência para exibir no gráfico de status');
                 return;
             }
 
@@ -1698,7 +1699,6 @@ Exemplos de formatos aceitos:
             const ctx = document.getElementById('agenciasChart');
             
             if (!ctx) {
-                console.error('Canvas agenciasChart não encontrado');
                 return;
             }
 
@@ -1715,7 +1715,6 @@ Exemplos de formatos aceitos:
                 .slice(0, 10);
 
             if (topAgencias.length === 0) {
-                console.log('Nenhuma agência para exibir no gráfico');
                 return;
             }
 
@@ -1792,7 +1791,7 @@ Exemplos de formatos aceitos:
                         <td>${prop.mci || '-'}</td>
                         <td><span class="badge badge-info">${prop.current}</span><br>${changeLabel}</td>
                         <td><div class="status-history">${historicoHTML}</div></td>
-                        <td>${prop.dtProp || '-'}<br><small style="color: #999;">Primeira vista: ${formatDate(prop.firstSeen)}</small></td>
+                        <td>${prop.dtProp ? formatDate(prop.dtProp) : '-'}<br><small style="color: #999;">Primeira vista: ${formatDate(prop.firstSeen)}</small></td>
                         <td>${formatCurrency(prop.valor)}</td>
                     `;
                 }
@@ -1836,11 +1835,12 @@ Exemplos de formatos aceitos:
             updateUI();
         }
 
-        function switchTab(tabName) {
+        // <<< ALTERADO: não depende mais de event global
+        function switchTab(tabName, btn) {
             document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
             
-            event.target.classList.add('active');
+            if (btn) btn.classList.add('active');
             document.getElementById(tabName).classList.add('active');
         }
 
@@ -1878,8 +1878,10 @@ Exemplos de formatos aceitos:
 
         function formatDate(date) {
             if (!date) return '-';
-            if (typeof date === 'string') return date;
-            return date.toLocaleDateString('pt-BR');
+            if (date instanceof Date) {
+                return date.toLocaleDateString('pt-BR');
+            }
+            return date;
         }
 
         function formatCurrency(value) {
@@ -1908,7 +1910,7 @@ Exemplos de formatos aceitos:
             return 'R$ 0,00';
         }
 
-        // <<< ALTERADO: função auxiliar para interpretar datas vindas da planilha
+        // <<< NOVO: parser de data robusto
         function parseToDateFlexible(value) {
             if (!value) return null;
 
@@ -1917,7 +1919,7 @@ Exemplos de formatos aceitos:
             }
 
             if (typeof value === 'number') {
-                // Pode ser timestamp ou serial do Excel; tentamos direto
+                // tenta direto
                 const d = new Date(value);
                 if (!isNaN(d.getTime())) return d;
             }
@@ -1925,7 +1927,7 @@ Exemplos de formatos aceitos:
             if (typeof value === 'string') {
                 const v = value.trim();
 
-                // ISO ou YYYY-MM-DD
+                // ISO
                 if (/^\d{4}-\d{2}-\d{2}/.test(v)) {
                     const d = new Date(v);
                     if (!isNaN(d.getTime())) return d;
@@ -1938,15 +1940,14 @@ Exemplos de formatos aceitos:
                     if (!isNaN(d.getTime())) return d;
                 }
 
-                // DD/MM (sem ano) -> usa ano da última planilha ou ano atual
+                // DD/MM (usa ano atual)
                 if (/^\d{1,2}\/\d{1,2}$/.test(v)) {
                     const [dd, mm] = v.split('/');
-                    const baseYear = latestFileDate ? new Date(latestFileDate).getFullYear() : new Date().getFullYear();
+                    const baseYear = new Date().getFullYear();
                     const d = new Date(baseYear, parseInt(mm, 10) - 1, parseInt(dd, 10));
                     if (!isNaN(d.getTime())) return d;
                 }
 
-                // fallback
                 const d = new Date(v);
                 if (!isNaN(d.getTime())) return d;
             }
