@@ -532,7 +532,7 @@ Exemplos de formatos aceitos:
             <div class="filter-section">
                 <div class="filter-group">
                     <label>Filtrar por Agência (Pref):</label>
-                    <select id="filterAgencia" onchange="applyFilters()">
+                    <select id="filterAgencia" onchange="applyFilters">
                         <option value="">Todas</option>
                     </select>
                     <label>Situação:</label>
@@ -671,6 +671,7 @@ Exemplos de formatos aceitos:
         let statusHistory = {};
         let currentFilter = { agencia: '', situacao: '' };
         let agenciaMap = {};
+        let latestFileDate = null; // <<< ALTERADO: data do arquivo mais recente
 
         function processAgenciaMapping() {
             const textarea = document.getElementById('agenciaMapping');
@@ -718,7 +719,6 @@ Exemplos de formatos aceitos:
                 }
             });
 
-            // Mostrar estatísticas
             const statsDiv = document.getElementById('mappingStats');
             statsDiv.style.display = 'flex';
             statsDiv.innerHTML = `
@@ -733,7 +733,6 @@ Exemplos de formatos aceitos:
             if (successCount > 0) {
                 showAlert(`Mapeamento processado! ${successCount} agência(s) cadastrada(s).`, 'success');
                 
-                // Se já houver dados processados, atualizar a interface
                 if (allData.length > 0) {
                     updateUI();
                 }
@@ -751,21 +750,18 @@ Exemplos de formatos aceitos:
                 return;
             }
 
-            // Limpar dados
             allData = [];
             filesData = [];
             statusHistory = {};
             currentFilter = { agencia: '', situacao: '' };
+            latestFileDate = null; // <<< manter coerente ao limpar
 
-            // Limpar input de arquivo
             document.getElementById('fileInput').value = '';
 
-            // Esconder seções
             document.getElementById('statsSection').style.display = 'none';
             document.getElementById('mainContent').style.display = 'none';
             document.getElementById('filesList').style.display = 'none';
 
-            // Limpar gráficos se existirem
             try {
                 if (window.agenciasChart && typeof window.agenciasChart.destroy === 'function') {
                     window.agenciasChart.destroy();
@@ -793,7 +789,6 @@ Exemplos de formatos aceitos:
                 return;
             }
 
-            // Converter mapeamento para CSV
             let csvContent = 'Prefixo,Nome da Agência\n';
             Object.entries(agenciaMap)
                 .sort((a, b) => a[0].localeCompare(b[0]))
@@ -801,7 +796,6 @@ Exemplos de formatos aceitos:
                     csvContent += `${prefixo},"${nome}"\n`;
                 });
 
-            // Salvar também em localStorage para recuperar depois
             try {
                 localStorage.setItem('agenciaMapping', JSON.stringify(agenciaMap));
                 localStorage.setItem('agenciaMappingText', document.getElementById('agenciaMapping').value);
@@ -809,7 +803,6 @@ Exemplos de formatos aceitos:
                 console.log('LocalStorage não disponível:', e);
             }
 
-            // Download do CSV
             const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement('a');
             const url = URL.createObjectURL(blob);
@@ -833,7 +826,6 @@ Exemplos de formatos aceitos:
             document.getElementById('agenciaMapping').value = '';
             document.getElementById('mappingStats').style.display = 'none';
 
-            // Limpar do localStorage
             try {
                 localStorage.removeItem('agenciaMapping');
                 localStorage.removeItem('agenciaMappingText');
@@ -841,7 +833,6 @@ Exemplos de formatos aceitos:
                 console.log('LocalStorage não disponível:', e);
             }
 
-            // Se houver dados processados, atualizar interface
             if (allData.length > 0) {
                 updateUI();
             }
@@ -876,7 +867,6 @@ Exemplos de formatos aceitos:
             }
         }
 
-        // Carregar mapeamento salvo ao iniciar a página
         window.addEventListener('load', carregarMapeamentoSalvo);
 
         function showAlert(message, type = 'success') {
@@ -884,7 +874,6 @@ Exemplos de formatos aceitos:
             const alert = document.createElement('div');
             alert.className = `alert ${type}`;
             
-            // Adicionar ícone baseado no tipo
             const icons = {
                 success: '✅',
                 warning: '⚠️',
@@ -897,7 +886,6 @@ Exemplos de formatos aceitos:
             
             container.appendChild(alert);
             
-            // Auto-remover após 7 segundos (mais tempo para erros)
             const timeout = type === 'warning' ? 10000 : 7000;
             setTimeout(() => {
                 alert.style.opacity = '0';
@@ -926,7 +914,6 @@ Exemplos de formatos aceitos:
                 results.push(result);
             }
 
-            // Contar sucessos e erros
             const successCount = results.filter(r => r.success).length;
             const errorCount = results.filter(r => !r.success).length;
 
@@ -945,7 +932,6 @@ Exemplos de formatos aceitos:
                 
                 const totalChanges = Object.values(statusHistory).reduce((sum, prop) => sum + Math.max(0, prop.changes.length - 1), 0);
                 
-                // Mensagem de sucesso com detalhes
                 let message = '';
                 if (errorCount > 0) {
                     message = `⚠️ ${successCount} arquivo(s) processado(s) com sucesso, ${errorCount} com erro. `;
@@ -974,7 +960,6 @@ Exemplos de formatos aceitos:
                 const fileExtension = file.name.split('.').pop().toLowerCase();
                 
                 if (fileExtension === 'csv') {
-                    // Processar CSV
                     Papa.parse(file, {
                         header: true,
                         skipEmptyLines: true,
@@ -1019,7 +1004,6 @@ Exemplos de formatos aceitos:
                         }
                     });
                 } else if (fileExtension === 'xlsx' || fileExtension === 'xls') {
-                    // Processar XLSX/XLS
                     const reader = new FileReader();
                     
                     reader.onload = function(e) {
@@ -1036,13 +1020,11 @@ Exemplos de formatos aceitos:
                                 return;
                             }
 
-                            // Pegar a primeira planilha
                             const firstSheetName = workbook.SheetNames[0];
                             const worksheet = workbook.Sheets[firstSheetName];
                             
                             console.log(`Lendo planilha: ${firstSheetName}`);
                             
-                            // Converter para JSON
                             const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
                             
                             console.log(`Total de linhas lidas: ${jsonData.length}`);
@@ -1053,11 +1035,10 @@ Exemplos de formatos aceitos:
                                 return;
                             }
 
-                            // Encontrar a linha de cabeçalho (procurar por "Nº Prop")
                             let headerRowIndex = -1;
                             let headers = [];
                             
-                            for (let i = 0; i < Math.min(20, jsonData.length); i++) { // Procurar nas primeiras 20 linhas
+                            for (let i = 0; i < Math.min(20, jsonData.length); i++) {
                                 const row = jsonData[i];
                                 if (Array.isArray(row) && row.some(cell => cell && cell.toString().includes('Nº Prop'))) {
                                     headerRowIndex = i;
@@ -1075,7 +1056,6 @@ Exemplos de formatos aceitos:
                                 return;
                             }
                             
-                            // Converter dados em objetos
                             const processedData = [];
                             for (let i = headerRowIndex + 1; i < jsonData.length; i++) {
                                 const row = jsonData[i];
@@ -1086,18 +1066,15 @@ Exemplos de formatos aceitos:
                                     if (header) {
                                         let cellValue = row[idx];
                                         
-                                        // Tratar valores especiais
                                         if (cellValue === undefined || cellValue === null) {
                                             cellValue = '';
                                         }
                                         
-                                        // Se for uma data do Excel, converter
                                         if (typeof cellValue === 'number' && (header.includes('Dt') || header.includes('Data'))) {
                                             try {
                                                 const date = XLSX.SSF.parse_date_code(cellValue);
                                                 cellValue = `${date.y}-${String(date.m).padStart(2, '0')}-${String(date.d).padStart(2, '0')}`;
                                             } catch (e) {
-                                                // Manter valor original se não conseguir converter
                                             }
                                         }
                                         
@@ -1105,7 +1082,6 @@ Exemplos de formatos aceitos:
                                     }
                                 });
                                 
-                                // Verificar se tem Nº Prop válido
                                 if (rowObj['Nº Prop'] && rowObj['Nº Prop'] !== 'Nº Prop' && rowObj['Nº Prop'] !== '') {
                                     rowObj._fileDate = fileDate;
                                     rowObj._fileName = file.name;
@@ -1149,79 +1125,128 @@ Exemplos de formatos aceitos:
         }
 
         function analyzeData() {
-    // Ordenar arquivos por data (crescente)
-    filesData.sort((a, b) => a.date - b.date);
+            filesData.sort((a, b) => a.date - b.date);
 
-    // Combinar todos os dados (só para filtros e contagens gerais)
-    allData = [];
-    filesData.forEach(file => {
-        allData = allData.concat(file.data);
-    });
+            console.log('=== INICIANDO ANÁLISE ===');
+            console.log(`Total de arquivos: ${filesData.length}`);
 
-    // Montar ocorrências por proposta em TODOS os arquivos
-    const propByFile = {}; // propNum -> [{fileDate, fileName, fileIndex, status, pref, mci, valor, dtProp, matriz, cart}]
-    filesData.forEach((file, fileIndex) => {
-        file.data.forEach(row => {
-            const propNumRaw = row['Nº Prop'] || row['Nº Proposta'] || row['Nº da Proposta'] || row['Proposta'] || row['Numero Proposta'];
-            if (!propNumRaw) return;
-            const propNum = String(propNumRaw).trim();
-
-            if (!propByFile[propNum]) propByFile[propNum] = [];
-            propByFile[propNum].push({
-                fileDate: file.date,
-                fileName: file.name,
-                fileIndex,
-                status: row['Situação'] || row['Status'] || row['Situacao'] || row['Situação Atual'],
-                pref: row['Pref'] || row['Prefixo'] || row['Agência Prefixo'],
-                mci: row['MCI'] || row['Cliente'] || row['Contrato'],
-                valor: row['Valor'] || row['Valor Proposta'] || row['Valor (R$)'] || row['VL'],
-                dtProp: row['Dt Prop'] || row['Data Proposta'] || row['Data de Proposta'] || row['Data'],
-                matriz: row['Matriz (atual)'] || row['Matriz'] || row['Rede'] || row['Regional'],
-                cart: row['Cart'] || row['Carteira'] || row['Tipo de Carteira']
+            allData = [];
+            filesData.forEach(file => {
+                console.log(`Arquivo: ${file.name}, Data: ${file.date}, Registros: ${file.data.length}`);
+                allData = allData.concat(file.data);
             });
-        });
-    });
 
-    // Construir histórico de mudanças (SEM exigir presença no arquivo mais recente)
-    statusHistory = {};
-    Object.entries(propByFile).forEach(([propNum, occurrences]) => {
-        // Ordenar aparições da proposta pelo tempo
-        occurrences.sort((a, b) => a.fileDate - b.fileDate);
+            console.log(`Total de registros combinados: ${allData.length}`);
 
-        const changes = [];
-        let lastStatus = null;
-        occurrences.forEach(occ => {
-            const occStatus = (occ.status || '').toString();
-            if (lastStatus === null || lastStatus !== occStatus) {
-                changes.push({
-                    status: occStatus,
-                    date: occ.fileDate,
-                    fileName: occ.fileName,
-                    previousStatus: lastStatus,
-                    fileIndex: occ.fileIndex
+            statusHistory = {};
+            
+            const propByFile = {};
+            
+            filesData.forEach((file, fileIndex) => {
+                file.data.forEach(row => {
+                    const propNum = row['Nº Prop'];
+                    
+                    if (!propNum) return;
+                    
+                    if (!propByFile[propNum]) {
+                        propByFile[propNum] = [];
+                    }
+                    
+                    propByFile[propNum].push({
+                        fileDate: file.date,
+                        fileName: file.name,
+                        fileIndex: fileIndex,
+                        status: row['Situação'],
+                        pref: row['Pref'],
+                        mci: row['MCI'],
+                        valor: row['Valor'],
+                        dtProp: row['Dt Prop'],
+                        matriz: row['Matriz (atual)'],
+                        cart: row['Cart']
+                    });
                 });
-                lastStatus = occStatus;
+            });
+
+            console.log(`Propostas únicas encontradas: ${Object.keys(propByFile).length}`);
+
+            const latestFile = filesData[filesData.length - 1];
+            latestFileDate = latestFile.date; // <<< ALTERADO: guardar a data mais recente
+            console.log(`Arquivo mais recente: ${latestFile.name}`);
+            
+            const latestFilePropostas = new Set();
+            latestFile.data.forEach(row => {
+                const propNum = row['Nº Prop'];
+                if (propNum) {
+                    latestFilePropostas.add(String(propNum).trim());
+                }
+            });
+
+            console.log(`Propostas no arquivo mais recente: ${latestFilePropostas.size}`);
+            console.log('Primeiras 10 propostas do arquivo mais recente:', Array.from(latestFilePropostas).slice(0, 10));
+
+            let removidas = 0;
+            let mantidas = 0;
+
+            Object.entries(propByFile).forEach(([propNum, occurrences]) => {
+                const propNumNormalized = String(propNum).trim();
+                
+                if (!latestFilePropostas.has(propNumNormalized)) {
+                    console.log(`Proposta ${propNum} removida - não existe na planilha mais recente`);
+                    removidas++;
+                    return;
+                }
+
+                mantidas++;
+
+                occurrences.sort((a, b) => a.fileDate - b.fileDate);
+                
+                const changes = [];
+                let lastStatus = null;
+                
+                occurrences.forEach((occ, idx) => {
+                    if (lastStatus === null || lastStatus !== occ.status) {
+                        changes.push({
+                            status: occ.status,
+                            date: occ.fileDate,
+                            fileName: occ.fileName,
+                            previousStatus: lastStatus,
+                            fileIndex: occ.fileIndex
+                        });
+                        lastStatus = occ.status;
+                    }
+                });
+                
+                const latest = occurrences[occurrences.length - 1];
+                
+                statusHistory[propNum] = {
+                    changes: changes,
+                    current: latest.status,
+                    pref: latest.pref,
+                    mci: latest.mci,
+                    valor: latest.valor,
+                    dtProp: latest.dtProp,
+                    matriz: latest.matriz,
+                    cart: latest.cart,
+                    firstSeen: occurrences[0].fileDate,
+                    lastSeen: latest.fileDate,
+                    allOccurrences: occurrences
+                };
+            });
+
+            console.log(`=== RESULTADO DA ANÁLISE ===`);
+            console.log(`Propostas mantidas: ${mantidas}`);
+            console.log(`Propostas removidas: ${removidas}`);
+            console.log(`Total de propostas no histórico: ${Object.keys(statusHistory).length}`);
+            console.log(`Propostas na planilha mais recente: ${latestFilePropostas.size}`);
+
+            if (Object.keys(statusHistory).length === 0) {
+                console.error('❌ ERRO: Nenhuma proposta no histórico! Verificar comparação de IDs.');
+                console.log('Exemplo de proposta do arquivo:', Object.keys(propByFile)[0]);
+                console.log('Exemplo de proposta do Set:', Array.from(latestFilePropostas)[0]);
             }
-        });
 
-        const latest = occurrences[occurrences.length - 1];
-        statusHistory[propNum] = {
-            changes,
-            current: latest.status,
-            pref: latest.pref,
-            mci: latest.mci,
-            valor: latest.valor,
-            dtProp: latest.dtProp,
-            matriz: latest.matriz,
-            cart: latest.cart,
-            firstSeen: occurrences[0].fileDate,
-            lastSeen: latest.fileDate,
-            allOccurrences: occurrences
-        };
-    });
-
-    updateFilesList && updateFilesList();
-}
+            updateFilesList();
+        }
 
         function updateFilesList() {
             const filesList = document.getElementById('filesList');
@@ -1271,10 +1296,9 @@ Exemplos de formatos aceitos:
 
             const mudancas = [];
             
-            // Coletar apenas mudanças REAIS (onde previousStatus existe)
             Object.entries(statusHistory).forEach(([propNum, prop]) => {
                 prop.changes.forEach((change, idx) => {
-                    if (change.previousStatus) { // Só mudanças reais
+                    if (change.previousStatus) {
                         mudancas.push({
                             propNum,
                             pref: prop.pref,
@@ -1289,7 +1313,6 @@ Exemplos de formatos aceitos:
                 });
             });
 
-            // Ordenar por data (mais recente primeiro)
             mudancas.sort((a, b) => b.date - a.date);
 
             if (mudancas.length === 0) {
@@ -1316,54 +1339,37 @@ Exemplos de formatos aceitos:
         }
 
         function getParadasData() {
-    const paradas = [];
+            const paradas = [];
+            const referenceDate = latestFileDate ? new Date(latestFileDate) : new Date(); // <<< ALTERADO: usar data da última planilha
 
-    // Data de referência = data do arquivo mais recente
-    const refDate = filesData.length
-        ? filesData.reduce((max, f) => f.date > max ? f.date : max, filesData[0].date)
-        : new Date();
-
-    // Status finais que NÃO contam como “parada”
-    const terminalStatuses = [
-        'FORMALIZADA', 'LIBERADA', 'CANCELADA', 'NEGADA', 'DESISTÊNCIA', 'REJEITADA', 'INDEFERIDA',
-        'FINALIZADA', 'CONCLUÍDA', 'CONCLUIDA', 'DESEMBOLSADA'
-    ];
-
-    Object.entries(statusHistory || {}).forEach(([propNum, prop]) => {
-        if (!prop || !prop.changes || !prop.changes.length) return;
-
-        // Última mudança REAL de status
-        const lastChange = prop.changes[prop.changes.length - 1];
-        const lastChangeDate = lastChange.date instanceof Date ? lastChange.date : new Date(lastChange.date);
-        const daysSinceChange = Math.floor((refDate - lastChangeDate) / (1000 * 60 * 60 * 24));
-
-        // Se terminou, não é “parada”
-        const cur = (prop.current || '').toString().toUpperCase();
-        const isTerminal = terminalStatuses.some(s => cur.includes(s));
-        if (isTerminal) return;
-
-        // Considerar parada somente se > 3 dias sem mudar
-        if (daysSinceChange > 3) {
-            // Quantas vezes apareceu após a última mudança (sem mudar)
-            const timesSeenWithoutChange = (prop.allOccurrences || []).filter(occ => {
-                const d = occ.fileDate instanceof Date ? occ.fileDate : new Date(occ.fileDate);
-                return d > lastChangeDate;
-            }).length;
-
-            paradas.push({
-                propNum,
-                ...prop,
-                lastChangeDate,
-                lastSeenDate: prop.lastSeen,
-                daysStopped: daysSinceChange,
-                filesWithoutChange: timesSeenWithoutChange,
-                numChanges: prop.changes.length
+            Object.entries(statusHistory).forEach(([propNum, prop]) => {
+                const lastChangeDate = prop.changes[prop.changes.length - 1].date;
+                const lastSeenDate = prop.lastSeen;
+                
+                let daysSinceChange = Math.floor((referenceDate - lastChangeDate) / (1000 * 60 * 60 * 24));
+                if (daysSinceChange < 0) {
+                    daysSinceChange = 0;
+                }
+                
+                if (daysSinceChange > 3) {
+                    const timesSeenWithoutChange = prop.allOccurrences.filter(occ => 
+                        occ.fileDate > lastChangeDate
+                    ).length;
+                    
+                    paradas.push({
+                        propNum,
+                        ...prop,
+                        lastChangeDate: lastChangeDate,
+                        lastSeenDate: lastSeenDate,
+                        daysStopped: daysSinceChange,
+                        filesWithoutChange: timesSeenWithoutChange,
+                        numChanges: prop.changes.length
+                    });
+                }
             });
-        }
-    });
 
-    return paradas;
-}
+            return paradas;
+        }
 
         function updateParadasTable() {
             const tbody = document.querySelector('#paradasTable tbody');
@@ -1377,7 +1383,6 @@ Exemplos de formatos aceitos:
                     const row = tbody.insertRow();
                     const badgeClass = p.daysStopped > 7 ? 'badge-danger' : 'badge-warning';
                     
-                    // Informação adicional sobre mudanças
                     const changeInfo = p.numChanges > 1 
                         ? `${p.numChanges - 1} mudança(s) antes` 
                         : 'Nunca mudou';
@@ -1405,7 +1410,6 @@ Exemplos de formatos aceitos:
             const agenciasStats = {};
             const paradasData = getParadasData();
 
-            // Construir estatísticas por agência
             Object.entries(statusHistory).forEach(([propNum, prop]) => {
                 const pref = prop.pref || 'Sem Prefixo';
                 
@@ -1429,7 +1433,6 @@ Exemplos de formatos aceitos:
 
                 agenciasStats[pref].total++;
                 
-                // Tratar valor de forma segura
                 let valorNum = 0;
                 if (prop.valor) {
                     if (typeof prop.valor === 'number') {
@@ -1441,11 +1444,9 @@ Exemplos de formatos aceitos:
                 }
                 agenciasStats[pref].valorTotal += valorNum;
 
-                // Contar por status atual
                 const status = prop.current || 'Sem Status';
                 agenciasStats[pref].statusCount[status] = (agenciasStats[pref].statusCount[status] || 0) + 1;
 
-                // Classificar por tipo de status
                 if (status.includes('ACOLHIMENTO')) {
                     agenciasStats[pref].acolhimento++;
                 } else if (status.includes('ACOLHIDA')) {
@@ -1460,7 +1461,6 @@ Exemplos de formatos aceitos:
                     agenciasStats[pref].formalizada++;
                 }
 
-                // Verificar se está parada
                 const parada = paradasData.find(p => p.propNum === propNum);
                 if (parada) {
                     agenciasStats[pref].paradas++;
@@ -1474,16 +1474,9 @@ Exemplos de formatos aceitos:
                 }
             });
 
-            // Atualizar tabela principal
             updateAgenciasMainTable(agenciasStats);
-            
-            // Atualizar tabela de propostas paradas
             updateParadasPorAgenciaTable(agenciasStats);
-            
-            // Atualizar seção de status detalhado
             updateStatusPorAgenciaDetalhado(agenciasStats);
-            
-            // Atualizar gráficos
             updateAgenciasChart(agenciasStats);
             updateStatusPorAgenciaChart(agenciasStats);
         }
@@ -1553,7 +1546,7 @@ Exemplos de formatos aceitos:
 
             Object.entries(agenciasStats)
                 .sort((a, b) => b[1].total - a[1].total)
-                .slice(0, 10) // Top 10 agências
+                .slice(0, 10)
                 .forEach(([pref, stats]) => {
                     if (currentFilter.agencia === '' || currentFilter.agencia === pref) {
                         const card = document.createElement('div');
@@ -1761,7 +1754,6 @@ Exemplos de formatos aceitos:
                 if (matchesFilter(prop.pref, prop.current)) {
                     const row = tbody.insertRow();
                     
-                    // Montar histórico detalhado
                     const historicoHTML = prop.changes.map((c, idx) => {
                         const arrow = idx > 0 ? '→ ' : '';
                         const badge = c.previousStatus ? 'badge-success' : 'badge-info';
@@ -1772,7 +1764,7 @@ Exemplos de formatos aceitos:
                         </div>`;
                     }).join('');
 
-                    const totalChanges = prop.changes.length - 1; // Subtrair o estado inicial
+                    const totalChanges = prop.changes.length - 1;
                     const changeLabel = totalChanges === 0 
                         ? '<span style="color: #999;">Sem mudanças</span>' 
                         : `<span style="color: #28a745; font-weight: bold;">${totalChanges} mudança(s)</span>`;
@@ -1876,7 +1868,6 @@ Exemplos de formatos aceitos:
         function formatCurrency(value) {
             if (!value) return 'R$ 0,00';
             
-            // Se já for número, usar direto
             if (typeof value === 'number') {
                 return new Intl.NumberFormat('pt-BR', { 
                     style: 'currency', 
@@ -1884,11 +1875,8 @@ Exemplos de formatos aceitos:
                 }).format(value);
             }
             
-            // Se for string, tentar converter
             if (typeof value === 'string') {
-                // Remover R$ e espaços se tiver
                 let cleanValue = value.replace('R$', '').trim();
-                // Trocar vírgula por ponto se necessário
                 cleanValue = cleanValue.replace(',', '.');
                 const num = parseFloat(cleanValue);
                 
