@@ -674,7 +674,10 @@ Exemplos de formatos aceitos:
         let agenciaMap = {};
         let latestFileDate = null;
 
-        // <<< NOVO: função de normalização única para filtros >>>
+        // <<< NOVO: vamos guardar o que foi realmente renderizado nessas duas abas >>>
+        let lastMudancasView = [];
+        let lastHistoricoView = [];
+
         function normalizeFilterValue(val) {
             if (val === null || val === undefined) return '';
             return String(val).trim().toLowerCase();
@@ -765,6 +768,8 @@ Exemplos de formatos aceitos:
             statusHistory = {};
             currentFilter = { agencia: '', situacao: '' };
             latestFileDate = null;
+            lastMudancasView = [];
+            lastHistoricoView = [];
 
             document.getElementById('fileInput').value = '';
 
@@ -1298,6 +1303,7 @@ Exemplos de formatos aceitos:
             tbody.innerHTML = '';
 
             const mudancas = [];
+            lastMudancasView = []; // <<< guarda o que de fato passa no filtro
             
             Object.entries(statusHistory).forEach(([propNum, prop]) => {
                 prop.changes.forEach((change, idx) => {
@@ -1318,12 +1324,6 @@ Exemplos de formatos aceitos:
 
             mudancas.sort((a, b) => b.date - a.date);
 
-            if (mudancas.length === 0) {
-                const row = tbody.insertRow();
-                row.innerHTML = '<td colspan="8" style="text-align: center; padding: 30px; color: #666;">📊 Nenhuma mudança de status detectada.</td>';
-                return;
-            }
-
             mudancas.forEach(m => {
                 if (matchesFilter(m.pref, m.status)) {
                     const row = tbody.insertRow();
@@ -1337,8 +1337,25 @@ Exemplos de formatos aceitos:
                         <td>${formatDate(m.date)}<br><small style="color: #999;">${m.fileName}</small></td>
                         <td>${formatCurrency(m.valor)}</td>
                     `;
+                    // salva linha filtrada
+                    lastMudancasView.push({
+                        "Nº Proposta": m.propNum,
+                        "Agência": getAgenciaNome(m.pref),
+                        "Prefixo": m.pref || '',
+                        "MCI": m.mci || '',
+                        "Status Anterior": m.previousStatus || '',
+                        "Status Atual": m.status || '',
+                        "Data Mudança": formatDate(m.date),
+                        "Origem": m.fileName,
+                        "Valor": formatCurrency(m.valor)
+                    });
                 }
             });
+
+            if (mudancas.length === 0 || lastMudancasView.length === 0) {
+                const row = tbody.insertRow();
+                row.innerHTML = '<td colspan="8" style="text-align: center; padding: 30px; color: #666;">📊 Nenhuma mudança de status detectada com os filtros atuais.</td>';
+            }
         }
 
         function getParadasData() {
@@ -1420,7 +1437,6 @@ Exemplos de formatos aceitos:
             }
         }
 
-        // aqui a gente aplica a mesma normalização do filtro de situação
         function updateAgenciasAnalysis() {
             const agenciasStats = {};
             const paradasData = getParadasData();
@@ -1764,6 +1780,7 @@ Exemplos de formatos aceitos:
         function updateHistoricoTable() {
             const tbody = document.querySelector('#historicoTable tbody');
             tbody.innerHTML = '';
+            lastHistoricoView = []; // <<< guarda o que foi mostrado
 
             Object.entries(statusHistory).forEach(([propNum, prop]) => {
                 if (matchesFilter(prop.pref, prop.current)) {
@@ -1781,21 +1798,38 @@ Exemplos de formatos aceitos:
 
                     const totalChanges = prop.changes.length - 1;
                     const changeLabel = totalChanges === 0 
-                        ? '<span style="color: #999;">Sem mudanças</span>' 
-                        : `<span style="color: #28a745; font-weight: bold;">${totalChanges} mudança(s)</span>`;
+                        ? 'Sem mudanças'
+                        : `${totalChanges} mudança(s)`;
 
                     row.innerHTML = `
                         <td>${propNum}</td>
                         <td><strong>${getAgenciaNome(prop.pref)}</strong></td>
                         <td>${prop.pref || '-'}</td>
                         <td>${prop.mci || '-'}</td>
-                        <td><span class="badge badge-info">${prop.current}</span><br>${changeLabel}</td>
+                        <td><span class="badge badge-info">${prop.current}</span><br><small>${changeLabel}</small></td>
                         <td><div class="status-history">${historicoHTML}</div></td>
                         <td>${prop.dtProp ? formatDate(prop.dtProp) : '-'}<br><small style="color: #999;">Primeira vista: ${formatDate(prop.firstSeen)}</small></td>
                         <td>${formatCurrency(prop.valor)}</td>
                     `;
+
+                    // salva forma mais simples pra exportar
+                    lastHistoricoView.push({
+                        "Nº Proposta": propNum,
+                        "Agência": getAgenciaNome(prop.pref),
+                        "Prefixo": prop.pref || '',
+                        "MCI": prop.mci || '',
+                        "Situação Atual": prop.current || '',
+                        "Histórico de Status": prop.changes.map(c => `${formatDate(c.date)} - ${c.status}`).join(' | '),
+                        "Data Proposta": prop.dtProp ? formatDate(prop.dtProp) : '',
+                        "Valor": formatCurrency(prop.valor)
+                    });
                 }
             });
+
+            if (lastHistoricoView.length === 0) {
+                const row = tbody.insertRow();
+                row.innerHTML = '<td colspan="8" style="text-align: center; padding: 30px; color: #666;">📋 Nenhum registro encontrado com os filtros atuais.</td>';
+            }
         }
 
         function updateFilters() {
@@ -1821,7 +1855,6 @@ Exemplos de formatos aceitos:
             situacaoSelect.value = selectedSit || '';
         }
 
-        // <<< AQUI foi o ponto principal: normalização nos dois filtros >>>
         function matchesFilter(pref, situacao) {
             const filterAg = normalizeFilterValue(currentFilter.agencia);
             const filterSit = normalizeFilterValue(currentFilter.situacao);
@@ -1856,8 +1889,87 @@ Exemplos de formatos aceitos:
 
         function exportCurrentView() {
             const activeTab = document.querySelector('.tab-content.active');
+            const activeId = activeTab ? activeTab.id : '';
+
+            // <<< NOVO: se for mudancas ou historico, exporta o array filtrado >>>
+            if (activeId === 'mudancas') {
+                const header = [
+                    "Nº Proposta",
+                    "Agência",
+                    "Prefixo",
+                    "MCI",
+                    "Status Anterior",
+                    "Status Atual",
+                    "Data Mudança",
+                    "Valor"
+                ];
+                const rows = [header.join(',')];
+                lastMudancasView.forEach(item => {
+                    rows.push([
+                        `"${item["Nº Proposta"]}"`,
+                        `"${item["Agência"]}"`,
+                        `"${item["Prefixo"]}"`,
+                        `"${item["MCI"]}"`,
+                        `"${item["Status Anterior"]}"`,
+                        `"${item["Status Atual"]}"`,
+                        `"${item["Data Mudança"]}"`,
+                        `"${item["Valor"]}"`
+                    ].join(','));
+                });
+                const csvContent = rows.join('\n');
+                const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement('a');
+                const url = URL.createObjectURL(blob);
+                link.setAttribute('href', url);
+                link.setAttribute('download', `Mudancas_de_Status_filtrado_${new Date().toISOString().split('T')[0]}.csv`);
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                showAlert('CSV exportado com sucesso!', 'success');
+                return;
+            }
+
+            if (activeId === 'historico') {
+                const header = [
+                    "Nº Proposta",
+                    "Agência",
+                    "Prefixo",
+                    "MCI",
+                    "Situação Atual",
+                    "Histórico de Status",
+                    "Data Proposta",
+                    "Valor"
+                ];
+                const rows = [header.join(',')];
+                lastHistoricoView.forEach(item => {
+                    rows.push([
+                        `"${item["Nº Proposta"]}"`,
+                        `"${item["Agência"]}"`,
+                        `"${item["Prefixo"]}"`,
+                        `"${item["MCI"]}"`,
+                        `"${item["Situação Atual"]}"`,
+                        `"${item["Histórico de Status"]}"`,
+                        `"${item["Data Proposta"]}"`,
+                        `"${item["Valor"]}"`
+                    ].join(','));
+                });
+                const csvContent = rows.join('\n');
+                const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement('a');
+                const url = URL.createObjectURL(blob);
+                link.setAttribute('href', url);
+                link.setAttribute('download', `Historico_Completo_filtrado_${new Date().toISOString().split('T')[0]}.csv`);
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                showAlert('CSV exportado com sucesso!', 'success');
+                return;
+            }
+
+            // demais abas continuam como estavam
             const table = activeTab.querySelector('table');
-            
             if (!table) return;
 
             let csv = [];
