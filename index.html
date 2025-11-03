@@ -532,7 +532,6 @@ Exemplos de formatos aceitos:
             <div class="filter-section">
                 <div class="filter-group">
                     <label>Filtrar por Agência (Pref):</label>
-                    <!-- sem onchange, só seleciona -->
                     <select id="filterAgencia">
                         <option value="">Todas</option>
                     </select>
@@ -540,7 +539,6 @@ Exemplos de formatos aceitos:
                     <select id="filterSituacao">
                         <option value="">Todas</option>
                     </select>
-                    <!-- botão novo pra aplicar -->
                     <button onclick="applyFilters()">Aplicar filtros</button>
                     <button onclick="clearFilters()">Limpar Filtros</button>
                     <button class="export-btn" onclick="exportCurrentView()">📥 Exportar CSV</button>
@@ -675,6 +673,12 @@ Exemplos de formatos aceitos:
         let currentFilter = { agencia: '', situacao: '' };
         let agenciaMap = {};
         let latestFileDate = null;
+
+        // <<< NOVO: função de normalização única para filtros >>>
+        function normalizeFilterValue(val) {
+            if (val === null || val === undefined) return '';
+            return String(val).trim().toLowerCase();
+        }
 
         function getReferenceDate() {
             return new Date();
@@ -1416,13 +1420,13 @@ Exemplos de formatos aceitos:
             }
         }
 
-        // filtro de situação agora continua valendo pra aba de agências
+        // aqui a gente aplica a mesma normalização do filtro de situação
         function updateAgenciasAnalysis() {
             const agenciasStats = {};
             const paradasData = getParadasData();
 
             Object.entries(statusHistory).forEach(([propNum, prop]) => {
-                if (currentFilter.situacao && prop.current !== currentFilter.situacao) {
+                if (currentFilter.situacao && normalizeFilterValue(prop.current) !== normalizeFilterValue(currentFilter.situacao)) {
                     return;
                 }
 
@@ -1503,7 +1507,7 @@ Exemplos de formatos aceitos:
             Object.entries(agenciasStats)
                 .sort((a, b) => b[1].total - a[1].total)
                 .forEach(([pref, stats]) => {
-                    if (currentFilter.agencia === '' || currentFilter.agencia === pref) {
+                    if (!currentFilter.agencia || normalizeFilterValue(currentFilter.agencia) === normalizeFilterValue(pref)) {
                         const taxaEvolucao = stats.total > 0 ? 
                             (((stats.analisada + stats.despachada + stats.despacho + stats.formalizada) / stats.total) * 100).toFixed(1) : 
                             '0.0';
@@ -1533,7 +1537,7 @@ Exemplos de formatos aceitos:
                 .filter(([pref, stats]) => stats.paradas > 0)
                 .sort((a, b) => b[1].paradas - a[1].paradas)
                 .forEach(([pref, stats]) => {
-                    if (currentFilter.agencia === '' || currentFilter.agencia === pref) {
+                    if (!currentFilter.agencia || normalizeFilterValue(currentFilter.agencia) === normalizeFilterValue(pref)) {
                         const percentParadas = ((stats.paradas / stats.total) * 100).toFixed(1);
                         
                         const row = tbody.insertRow();
@@ -1563,7 +1567,7 @@ Exemplos de formatos aceitos:
                 .sort((a, b) => b[1].total - a[1].total)
                 .slice(0, 10)
                 .forEach(([pref, stats]) => {
-                    if (currentFilter.agencia === '' || currentFilter.agencia === pref) {
+                    if (!currentFilter.agencia || normalizeFilterValue(currentFilter.agencia) === normalizeFilterValue(pref)) {
                         const card = document.createElement('div');
                         card.className = 'status-card';
                         
@@ -1817,9 +1821,15 @@ Exemplos de formatos aceitos:
             situacaoSelect.value = selectedSit || '';
         }
 
+        // <<< AQUI foi o ponto principal: normalização nos dois filtros >>>
         function matchesFilter(pref, situacao) {
-            if (currentFilter.agencia && pref !== currentFilter.agencia) return false;
-            if (currentFilter.situacao && situacao !== currentFilter.situacao) return false;
+            const filterAg = normalizeFilterValue(currentFilter.agencia);
+            const filterSit = normalizeFilterValue(currentFilter.situacao);
+            const rowAg = normalizeFilterValue(pref);
+            const rowSit = normalizeFilterValue(situacao);
+
+            if (filterAg && rowAg !== filterAg) return false;
+            if (filterSit && rowSit !== filterSit) return false;
             return true;
         }
 
