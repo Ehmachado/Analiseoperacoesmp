@@ -532,7 +532,8 @@ Exemplos de formatos aceitos:
             <div class="filter-section">
                 <div class="filter-group">
                     <label>Filtrar por Agência (Pref):</label>
-                    <select id="filterAgencia" onchange="applyFilters">
+                    <!-- <<< ALTERADO: aqui estava sem parênteses -->
+                    <select id="filterAgencia" onchange="applyFilters()">
                         <option value="">Todas</option>
                     </select>
                     <label>Situação:</label>
@@ -673,7 +674,6 @@ Exemplos de formatos aceitos:
         let agenciaMap = {};
         let latestFileDate = null;
 
-        // <<< ALTERADO: vamos usar sempre HOJE como referência de atraso
         function getReferenceDate() {
             return new Date();
         }
@@ -1144,7 +1144,6 @@ Exemplos de formatos aceitos:
                         pref: row['Pref'],
                         mci: row['MCI'],
                         valor: row['Valor'],
-                        // guardamos todas as colunas pra tentar achar a data de criação
                         rawRow: row
                     });
                 });
@@ -1188,7 +1187,6 @@ Exemplos de formatos aceitos:
                 
                 const latest = occurrences[occurrences.length - 1];
                 
-                // <<< ALTERADO: agora já guardamos aqui a data de criação estimada
                 const creationDate = extractCreationDateFromOccurrences(occurrences) || occurrences[0].fileDate;
 
                 statusHistory[propNum] = {
@@ -1197,7 +1195,7 @@ Exemplos de formatos aceitos:
                     pref: latest.pref,
                     mci: latest.mci,
                     valor: latest.valor,
-                    dtProp: creationDate, // vamos usar direto
+                    dtProp: creationDate,
                     firstSeen: occurrences[0].fileDate,
                     lastSeen: latest.fileDate,
                     allOccurrences: occurrences
@@ -1207,7 +1205,6 @@ Exemplos de formatos aceitos:
             updateFilesList();
         }
 
-        // <<< NOVO: tenta achar a data de criação percorrendo várias colunas comuns
         function extractCreationDateFromOccurrences(occurrences) {
             const possibleDateKeys = [
                 'Dt Prop',
@@ -1226,7 +1223,6 @@ Exemplos de formatos aceitos:
 
             occurrences.forEach(occ => {
                 const row = occ.rawRow || {};
-                // 1) tenta pelas chaves conhecidas
                 for (const key of possibleDateKeys) {
                     if (row[key]) {
                         const d = parseToDateFlexible(row[key]);
@@ -1235,7 +1231,6 @@ Exemplos de formatos aceitos:
                         }
                     }
                 }
-                // 2) fallback: se vier alguma coluna com "prop" e "data" no nome
                 Object.keys(row).forEach(k => {
                     const low = k.toLowerCase();
                     if ((low.includes('prop') || low.includes('proposta')) && (low.includes('dt') || low.includes('data'))) {
@@ -1340,32 +1335,26 @@ Exemplos de formatos aceitos:
             });
         }
 
-        // <<< ALTERADO: lógica de paradas refeita
         function getParadasData() {
             const paradas = [];
-            const referenceDate = getReferenceDate(); // hoje
+            const referenceDate = getReferenceDate();
 
             Object.entries(statusHistory).forEach(([propNum, prop]) => {
-                // última mudança conhecida
                 const lastChange = prop.changes[prop.changes.length - 1];
                 let lastChangeDate = lastChange ? lastChange.date : prop.lastSeen;
 
-                // data de criação que detectamos
                 let creationDate = prop.dtProp ? (prop.dtProp instanceof Date ? prop.dtProp : parseToDateFlexible(prop.dtProp)) : null;
                 if (!creationDate) {
                     creationDate = prop.firstSeen ? new Date(prop.firstSeen) : null;
                 }
 
-                // se nunca mudou, começa a contar da criação
                 let startDate = null;
                 if (prop.changes.length <= 1) {
                     startDate = creationDate || new Date(prop.firstSeen);
                 } else {
-                    // mudou pelo menos uma vez: conta da última mudança
                     startDate = lastChangeDate ? new Date(lastChangeDate) : (creationDate || new Date(prop.firstSeen));
                 }
 
-                // se ainda assim não temos data, pula
                 if (!startDate) return;
 
                 let daysSince = Math.floor((referenceDate - startDate) / (1000 * 60 * 60 * 24));
@@ -1835,7 +1824,6 @@ Exemplos de formatos aceitos:
             updateUI();
         }
 
-        // <<< ALTERADO: não depende mais de event global
         function switchTab(tabName, btn) {
             document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
@@ -1910,7 +1898,6 @@ Exemplos de formatos aceitos:
             return 'R$ 0,00';
         }
 
-        // <<< NOVO: parser de data robusto
         function parseToDateFlexible(value) {
             if (!value) return null;
 
@@ -1919,7 +1906,6 @@ Exemplos de formatos aceitos:
             }
 
             if (typeof value === 'number') {
-                // tenta direto
                 const d = new Date(value);
                 if (!isNaN(d.getTime())) return d;
             }
@@ -1927,20 +1913,17 @@ Exemplos de formatos aceitos:
             if (typeof value === 'string') {
                 const v = value.trim();
 
-                // ISO
                 if (/^\d{4}-\d{2}-\d{2}/.test(v)) {
                     const d = new Date(v);
                     if (!isNaN(d.getTime())) return d;
                 }
 
-                // DD/MM/YYYY
                 if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(v)) {
                     const [dd, mm, yyyy] = v.split('/');
                     const d = new Date(parseInt(yyyy, 10), parseInt(mm, 10) - 1, parseInt(dd, 10));
                     if (!isNaN(d.getTime())) return d;
                 }
 
-                // DD/MM (usa ano atual)
                 if (/^\d{1,2}\/\d{1,2}$/.test(v)) {
                     const [dd, mm] = v.split('/');
                     const baseYear = new Date().getFullYear();
