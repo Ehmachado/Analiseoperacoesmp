@@ -1149,140 +1149,79 @@ Exemplos de formatos aceitos:
         }
 
         function analyzeData() {
-            // Ordenar arquivos por data
-            filesData.sort((a, b) => a.date - b.date);
+    // Ordenar arquivos por data (crescente)
+    filesData.sort((a, b) => a.date - b.date);
 
-            console.log('=== INICIANDO ANÁLISE ===');
-            console.log(`Total de arquivos: ${filesData.length}`);
+    // Combinar todos os dados (só para filtros e contagens gerais)
+    allData = [];
+    filesData.forEach(file => {
+        allData = allData.concat(file.data);
+    });
 
-            // Combinar todos os dados
-            allData = [];
-            filesData.forEach(file => {
-                console.log(`Arquivo: ${file.name}, Data: ${file.date}, Registros: ${file.data.length}`);
-                allData = allData.concat(file.data);
+    // Montar ocorrências por proposta em TODOS os arquivos
+    const propByFile = {}; // propNum -> [{fileDate, fileName, fileIndex, status, pref, mci, valor, dtProp, matriz, cart}]
+    filesData.forEach((file, fileIndex) => {
+        file.data.forEach(row => {
+            const propNumRaw = row['Nº Prop'] || row['Nº Proposta'] || row['Nº da Proposta'] || row['Proposta'] || row['Numero Proposta'];
+            if (!propNumRaw) return;
+            const propNum = String(propNumRaw).trim();
+
+            if (!propByFile[propNum]) propByFile[propNum] = [];
+            propByFile[propNum].push({
+                fileDate: file.date,
+                fileName: file.name,
+                fileIndex,
+                status: row['Situação'] || row['Status'] || row['Situacao'] || row['Situação Atual'],
+                pref: row['Pref'] || row['Prefixo'] || row['Agência Prefixo'],
+                mci: row['MCI'] || row['Cliente'] || row['Contrato'],
+                valor: row['Valor'] || row['Valor Proposta'] || row['Valor (R$)'] || row['VL'],
+                dtProp: row['Dt Prop'] || row['Data Proposta'] || row['Data de Proposta'] || row['Data'],
+                matriz: row['Matriz (atual)'] || row['Matriz'] || row['Rede'] || row['Regional'],
+                cart: row['Cart'] || row['Carteira'] || row['Tipo de Carteira']
             });
+        });
+    });
 
-            console.log(`Total de registros combinados: ${allData.length}`);
+    // Construir histórico de mudanças (SEM exigir presença no arquivo mais recente)
+    statusHistory = {};
+    Object.entries(propByFile).forEach(([propNum, occurrences]) => {
+        // Ordenar aparições da proposta pelo tempo
+        occurrences.sort((a, b) => a.fileDate - b.fileDate);
 
-            // Construir histórico temporal real - comparando ENTRE arquivos
-            statusHistory = {};
-            
-            // Para cada proposta, rastrear seu status em cada arquivo
-            const propByFile = {}; // propNum -> [{fileDate, status, fileIndex, fullData}]
-            
-            filesData.forEach((file, fileIndex) => {
-                file.data.forEach(row => {
-                    const propNum = row['Nº Prop'];
-                    
-                    if (!propNum) return; // Pular linhas sem número de proposta
-                    
-                    if (!propByFile[propNum]) {
-                        propByFile[propNum] = [];
-                    }
-                    
-                    propByFile[propNum].push({
-                        fileDate: file.date,
-                        fileName: file.name,
-                        fileIndex: fileIndex,
-                        status: row['Situação'],
-                        pref: row['Pref'],
-                        mci: row['MCI'],
-                        valor: row['Valor'],
-                        dtProp: row['Dt Prop'],
-                        matriz: row['Matriz (atual)'],
-                        cart: row['Cart']
-                    });
+        const changes = [];
+        let lastStatus = null;
+        occurrences.forEach(occ => {
+            const occStatus = (occ.status || '').toString();
+            if (lastStatus === null || lastStatus !== occStatus) {
+                changes.push({
+                    status: occStatus,
+                    date: occ.fileDate,
+                    fileName: occ.fileName,
+                    previousStatus: lastStatus,
+                    fileIndex: occ.fileIndex
                 });
-            });
-
-            console.log(`Propostas únicas encontradas: ${Object.keys(propByFile).length}`);
-
-            // Pegar propostas do arquivo mais recente
-            const latestFile = filesData[filesData.length - 1];
-            console.log(`Arquivo mais recente: ${latestFile.name}`);
-            
-            const latestFilePropostas = new Set();
-            latestFile.data.forEach(row => {
-                const propNum = row['Nº Prop'];
-                if (propNum) {
-                    // Converter para string e remover espaços para garantir comparação correta
-                    latestFilePropostas.add(String(propNum).trim());
-                }
-            });
-
-            console.log(`Propostas no arquivo mais recente: ${latestFilePropostas.size}`);
-            console.log('Primeiras 10 propostas do arquivo mais recente:', Array.from(latestFilePropostas).slice(0, 10));
-
-            let removidas = 0;
-            let mantidas = 0;
-
-            // Agora construir o histórico de mudanças
-            Object.entries(propByFile).forEach(([propNum, occurrences]) => {
-                // Normalizar propNum para comparação
-                const propNumNormalized = String(propNum).trim();
-                
-                // REGRA: Se a proposta não existe na planilha mais recente, não incluir no histórico
-                if (!latestFilePropostas.has(propNumNormalized)) {
-                    console.log(`Proposta ${propNum} removida - não existe na planilha mais recente`);
-                    removidas++;
-                    return; // Pular esta proposta
-                }
-
-                mantidas++;
-
-                // Ordenar por data do arquivo
-                occurrences.sort((a, b) => a.fileDate - b.fileDate);
-                
-                const changes = [];
-                let lastStatus = null;
-                
-                occurrences.forEach((occ, idx) => {
-                    // Primeira ocorrência OU mudança de status
-                    if (lastStatus === null || lastStatus !== occ.status) {
-                        changes.push({
-                            status: occ.status,
-                            date: occ.fileDate,
-                            fileName: occ.fileName,
-                            previousStatus: lastStatus,
-                            fileIndex: occ.fileIndex
-                        });
-                        lastStatus = occ.status;
-                    }
-                    // Mesmo status - não adicionar mudança, mas registrar que ainda existe
-                });
-                
-                // Pegar dados mais recentes
-                const latest = occurrences[occurrences.length - 1];
-                
-                statusHistory[propNum] = {
-                    changes: changes,
-                    current: latest.status,
-                    pref: latest.pref,
-                    mci: latest.mci,
-                    valor: latest.valor,
-                    dtProp: latest.dtProp,
-                    matriz: latest.matriz,
-                    cart: latest.cart,
-                    firstSeen: occurrences[0].fileDate,
-                    lastSeen: latest.fileDate,
-                    allOccurrences: occurrences // Guardar todas as ocorrências
-                };
-            });
-
-            console.log(`=== RESULTADO DA ANÁLISE ===`);
-            console.log(`Propostas mantidas: ${mantidas}`);
-            console.log(`Propostas removidas: ${removidas}`);
-            console.log(`Total de propostas no histórico: ${Object.keys(statusHistory).length}`);
-            console.log(`Propostas na planilha mais recente: ${latestFilePropostas.size}`);
-
-            if (Object.keys(statusHistory).length === 0) {
-                console.error('❌ ERRO: Nenhuma proposta no histórico! Verificar comparação de IDs.');
-                console.log('Exemplo de proposta do arquivo:', Object.keys(propByFile)[0]);
-                console.log('Exemplo de proposta do Set:', Array.from(latestFilePropostas)[0]);
+                lastStatus = occStatus;
             }
+        });
 
-            updateFilesList();
-        }
+        const latest = occurrences[occurrences.length - 1];
+        statusHistory[propNum] = {
+            changes,
+            current: latest.status,
+            pref: latest.pref,
+            mci: latest.mci,
+            valor: latest.valor,
+            dtProp: latest.dtProp,
+            matriz: latest.matriz,
+            cart: latest.cart,
+            firstSeen: occurrences[0].fileDate,
+            lastSeen: latest.fileDate,
+            allOccurrences: occurrences
+        };
+    });
+
+    updateFilesList && updateFilesList();
+}
 
         function updateFilesList() {
             const filesList = document.getElementById('filesList');
@@ -1377,40 +1316,54 @@ Exemplos de formatos aceitos:
         }
 
         function getParadasData() {
-            const paradas = [];
-            const today = new Date();
+    const paradas = [];
 
-            Object.entries(statusHistory).forEach(([propNum, prop]) => {
-                // Data da última mudança de status (não apenas última vez vista)
-                const lastChangeDate = prop.changes[prop.changes.length - 1].date;
-                
-                // Data da última vez que a proposta apareceu em um arquivo
-                const lastSeenDate = prop.lastSeen;
-                
-                // Calcular dias desde a última mudança
-                const daysSinceChange = Math.floor((today - lastChangeDate) / (1000 * 60 * 60 * 24));
-                
-                // Se a proposta não mudou de status e já faz mais de 3 dias
-                if (daysSinceChange > 3) {
-                    // Verificar quantas vezes apareceu sem mudar
-                    const timesSeenWithoutChange = prop.allOccurrences.filter(occ => 
-                        occ.fileDate > lastChangeDate
-                    ).length;
-                    
-                    paradas.push({
-                        propNum,
-                        ...prop,
-                        lastChangeDate: lastChangeDate,
-                        lastSeenDate: lastSeenDate,
-                        daysStopped: daysSinceChange,
-                        filesWithoutChange: timesSeenWithoutChange,
-                        numChanges: prop.changes.length
-                    });
-                }
+    // Data de referência = data do arquivo mais recente
+    const refDate = filesData.length
+        ? filesData.reduce((max, f) => f.date > max ? f.date : max, filesData[0].date)
+        : new Date();
+
+    // Status finais que NÃO contam como “parada”
+    const terminalStatuses = [
+        'FORMALIZADA', 'LIBERADA', 'CANCELADA', 'NEGADA', 'DESISTÊNCIA', 'REJEITADA', 'INDEFERIDA',
+        'FINALIZADA', 'CONCLUÍDA', 'CONCLUIDA', 'DESEMBOLSADA'
+    ];
+
+    Object.entries(statusHistory || {}).forEach(([propNum, prop]) => {
+        if (!prop || !prop.changes || !prop.changes.length) return;
+
+        // Última mudança REAL de status
+        const lastChange = prop.changes[prop.changes.length - 1];
+        const lastChangeDate = lastChange.date instanceof Date ? lastChange.date : new Date(lastChange.date);
+        const daysSinceChange = Math.floor((refDate - lastChangeDate) / (1000 * 60 * 60 * 24));
+
+        // Se terminou, não é “parada”
+        const cur = (prop.current || '').toString().toUpperCase();
+        const isTerminal = terminalStatuses.some(s => cur.includes(s));
+        if (isTerminal) return;
+
+        // Considerar parada somente se > 3 dias sem mudar
+        if (daysSinceChange > 3) {
+            // Quantas vezes apareceu após a última mudança (sem mudar)
+            const timesSeenWithoutChange = (prop.allOccurrences || []).filter(occ => {
+                const d = occ.fileDate instanceof Date ? occ.fileDate : new Date(occ.fileDate);
+                return d > lastChangeDate;
+            }).length;
+
+            paradas.push({
+                propNum,
+                ...prop,
+                lastChangeDate,
+                lastSeenDate: prop.lastSeen,
+                daysStopped: daysSinceChange,
+                filesWithoutChange: timesSeenWithoutChange,
+                numChanges: prop.changes.length
             });
-
-            return paradas;
         }
+    });
+
+    return paradas;
+}
 
         function updateParadasTable() {
             const tbody = document.querySelector('#paradasTable tbody');
